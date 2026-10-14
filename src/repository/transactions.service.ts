@@ -7,7 +7,7 @@ import { TransactionsEntity } from '../database/entity/transactions.entity';
 import { OrderByEnum, OrderDirectionEnum } from '../enum/database.enum';
 import { Errors } from '../enum/errors.enum';
 import {
-  FormatedLogType,
+  FormattedLogType,
   RequestLogType,
   ReturnedLogType,
   TopAccountsResponseType,
@@ -23,7 +23,7 @@ export class TransactionsService {
     private readonly configService: ConfigService,
   ) {}
 
-  async setTransactions(logs: FormatedLogType[]): Promise<boolean> {
+  async setTransactions(logs: FormattedLogType[]): Promise<boolean> {
     try {
       if (logs.length === 0) {
         this.logger.log('No logs to insert');
@@ -50,6 +50,7 @@ export class TransactionsService {
       }
       return true;
     } catch (error) {
+      this.logger.error(error);
       throw new Error(Errors.DataBase);
     }
   }
@@ -66,6 +67,48 @@ export class TransactionsService {
       const highestBlock = result?.maxBlockNumber || 0;
       return Math.max(highestBlock, Number(startBlock));
     } catch (error) {
+      this.logger.error(error);
+      throw new Error(Errors.DataBase);
+    }
+  }
+
+  // Newest indexed blocks with the hash stored at indexing time.
+  async getLatestIndexedBlocks(
+    limit: number,
+  ): Promise<{ blockNumber: number; blockHash: string }[]> {
+    try {
+      const rows: { blockNumber: string; blockHash: string }[] =
+        await this.transactionsRepository
+          .createQueryBuilder('transactions')
+          .select('transactions.blockNumber', 'blockNumber')
+          .addSelect('transactions.blockHash', 'blockHash')
+          .where('transactions.blockHash IS NOT NULL')
+          .groupBy('transactions.blockNumber')
+          .addGroupBy('transactions.blockHash')
+          .orderBy('transactions.blockNumber', 'DESC')
+          .limit(limit)
+          .getRawMany();
+      return rows.map((row) => ({
+        blockNumber: Number(row.blockNumber),
+        blockHash: row.blockHash,
+      }));
+    } catch (error) {
+      this.logger.error(error);
+      throw new Error(Errors.DataBase);
+    }
+  }
+
+  // Deletes transfers from this block upwards (inclusive).
+  async deleteFromBlock(blockNumber: number): Promise<void> {
+    try {
+      await this.transactionsRepository
+        .createQueryBuilder()
+        .delete()
+        .from(TransactionsEntity)
+        .where('blockNumber >= :blockNumber', { blockNumber })
+        .execute();
+    } catch (error) {
+      this.logger.error(error);
       throw new Error(Errors.DataBase);
     }
   }
@@ -119,7 +162,7 @@ export class TransactionsService {
           to: args.filter.to,
         });
       }
-      const result = await query.getRawMany();
+      const result = await query.getRawMany<ReturnedLogType>();
       return result;
     } catch (error) {
       this.logger.error(error);
@@ -162,7 +205,7 @@ export class TransactionsService {
           endDate: args.endDate,
         });
       }
-      return query.getRawOne();
+      return await query.getRawOne<TotalParamsResponseType>();
     } catch (error) {
       this.logger.error(error);
       throw new Error(Errors.DataBase);
@@ -178,12 +221,14 @@ export class TransactionsService {
         .select('transactions.from AS address')
         .addSelect('SUM(transactions.value) AS totalValue')
         .addSelect('COUNT(*) AS numberOfTransactions')
+        .leftJoin('transactions.blocks', 'blocks')
         .groupBy('transactions.from')
         .orderBy(
           args.filter?.orderBy || OrderByEnum.value,
           args.filter?.order || OrderDirectionEnum.DESC,
         )
-        .limit(args.filter?.limit);
+        .limit(args.filter?.limit)
+        .offset(args.filter?.offset);
 
       if (args.startBlock && args.endBlock) {
         query.andWhere('transactions.blockNumber >= :startBlock', {
@@ -194,10 +239,10 @@ export class TransactionsService {
         });
       }
       if (args.startDate && args.endDate) {
-        query.andWhere('transactions.executedDate >= :startDate', {
+        query.andWhere('blocks.executedDate >= :startDate', {
           startDate: args.startDate,
         });
-        query.andWhere('transactions.executedDate <= :endDate', {
+        query.andWhere('blocks.executedDate <= :endDate', {
           endDate: args.endDate,
         });
       }

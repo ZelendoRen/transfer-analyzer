@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, UpdateResult } from 'typeorm';
 
@@ -6,6 +6,7 @@ import { BlocksEntity } from '../database/entity/blocks.entity';
 import { BlocksInsertParamsType } from '../types/types';
 import { Errors } from '../enum/errors.enum';
 
+@Injectable()
 export class BlocksService {
   private readonly logger = new Logger(BlocksService.name);
   constructor(
@@ -45,14 +46,30 @@ export class BlocksService {
       throw new Error(Errors.DataBase);
     }
   }
+  async deleteFromBlock(blockNumber: number): Promise<void> {
+    try {
+      await this.blocksRepository
+        .createQueryBuilder()
+        .delete()
+        .from(BlocksEntity)
+        .where('blockNumber >= :blockNumber', { blockNumber })
+        .execute();
+    } catch (error) {
+      this.logger.error(error);
+      throw new Error(Errors.DataBase);
+    }
+  }
+
   async getBlockWithoutDate(): Promise<number | undefined> {
     try {
-      const result = await this.blocksRepository
-        .createQueryBuilder('blocks')
-        .select('blocks.blockNumber', 'blockNumber')
-        .where('blocks.executedDate IS NULL')
-        .getRawOne();
-      return result?.blockNumber;
+      const result: { blockNumber: string } | undefined =
+        await this.blocksRepository
+          .createQueryBuilder('blocks')
+          .select('blocks.blockNumber', 'blockNumber')
+          .where('blocks.executedDate IS NULL')
+          .getRawOne();
+      // bigint arrives from PostgreSQL as a string
+      return result ? Number(result.blockNumber) : undefined;
     } catch (error) {
       this.logger.error(error);
       throw new Error(Errors.DataBase);

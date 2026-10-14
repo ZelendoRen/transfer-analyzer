@@ -1,5 +1,7 @@
 import { IsDateString, IsNumber, IsOptional, IsString } from 'class-validator';
 import { Transform } from 'class-transformer';
+
+import { toInt, toIsoDate } from '../../common/transforms';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class TotalRequestDTO {
@@ -9,7 +11,7 @@ export class TotalRequestDTO {
     required: false,
   })
   @IsOptional()
-  @Transform(({ value }) => parseInt(value))
+  @Transform(toInt())
   @IsNumber()
   startBlock: number | undefined;
 
@@ -19,7 +21,7 @@ export class TotalRequestDTO {
     required: false,
   })
   @IsOptional()
-  @Transform(({ value }) => parseInt(value))
+  @Transform(toInt())
   @IsNumber()
   endBlock: number | undefined;
 
@@ -29,9 +31,7 @@ export class TotalRequestDTO {
     required: false,
   })
   @IsOptional()
-  @Transform(({ value }) =>
-    !isNaN(value) ? new Date(Number(value)).toISOString() : undefined,
-  )
+  @Transform(toIsoDate)
   @IsDateString()
   startDate: string | undefined;
 
@@ -41,21 +41,21 @@ export class TotalRequestDTO {
     required: false,
   })
   @IsOptional()
-  @Transform(({ value }) => new Date(Number(value)).toISOString() || undefined)
+  @Transform(toIsoDate)
   @IsDateString()
   endDate: string | undefined;
 }
 
 export class TotalResponseDTO {
   @ApiProperty({
-    description: 'First transaction hash',
+    description: 'Execution date of the first indexed transaction (ISO 8601)',
     type: 'string',
   })
   @IsString()
   firstTransaction: string;
 
   @ApiProperty({
-    description: 'Last transaction hash',
+    description: 'Execution date of the last indexed transaction (ISO 8601)',
     type: 'string',
   })
   @IsString()
@@ -77,29 +77,29 @@ export class TotalResponseDTO {
 
   @ApiProperty({
     description: 'Total number of transactions',
-    type: 'number',
+    type: 'string',
   })
-  @IsNumber()
-  totalTransactionsCount: number;
+  @IsString()
+  totalTransactionsCount: string;
 
   @ApiProperty({
-    description: 'Total value of transactions',
-    type: 'number',
+    description: 'Total value of transactions in the token base units',
+    type: 'string',
   })
-  @IsNumber()
-  totalValue: number;
+  @IsString()
+  totalValue: string;
 
   @ApiProperty({
-    description: 'Minimum transaction value',
-    type: 'number',
+    description: 'Minimum transaction value in the token base units',
+    type: 'string',
   })
-  @IsNumber()
-  minTransactionValue: number;
+  @IsString()
+  minTransactionValue: string;
 
   @ApiProperty({
-    description: 'Maximum transaction value',
-    type: 'number',
+    description: 'Maximum transaction value in the token base units',
+    type: 'string',
   })
-  @IsNumber()
-  maxTransactionValue: number;
+  @IsString()
+  maxTransactionValue: string;
 }

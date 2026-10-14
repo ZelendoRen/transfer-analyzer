@@ -9,7 +9,6 @@ import {
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { GetLogsRequestDTO, GetLogsQueryResponseDTO } from './dto/getLogs.dto';
-import { OrderByEnum, OrderDirectionEnum } from '../enum/database.enum';
 import { TotalRequestDTO, TotalResponseDTO } from './dto/total.dto';
 import { AggregatorService } from './aggregator.service';
 import { Errors } from '../enum/errors.enum';
@@ -23,12 +22,15 @@ import {
   TopAccountsResponseDTO,
 } from './dto/topAccounts.dto';
 
+const toIso = (ms: number | undefined): string | undefined =>
+  ms === undefined ? undefined : new Date(ms).toISOString();
+
 @ApiTags('Aggregator')
 @Controller('aggregator')
-export class AggregatorContorller {
+export class AggregatorController {
   constructor(private readonly aggregatorService: AggregatorService) {}
 
-  async validateRangeParams(
+  validateRangeParams(
     startBlock: string | number | undefined,
     endBlock: string | number | undefined,
     startDate: string | undefined,
@@ -70,7 +72,8 @@ export class AggregatorContorller {
   @Get('logs')
   @ApiOperation({
     summary: 'Get logs',
-    description: 'Get contract logs from the database',
+    description:
+      'Get contract logs from the database. Dates are timestamps in milliseconds',
   })
   @ApiResponse({
     status: 200,
@@ -82,7 +85,8 @@ export class AggregatorContorller {
         transactionHash:
           '0xaefe609781e88d91e5b6e0ee0c4295b385614f3d1edca3e5474fdf6b0f82509f',
         blockNumber: 20391007,
-        executedDate: null,
+        logIndex: 3,
+        executedDate: '2025-02-20T18:19:41.000Z',
         uploaded: '2025-02-20T18:19:59.114Z',
         from: '0x2C88A3B97263D703fD6D2434e14fA3a51f3Ce39c',
         to: '0xf4003F4efBE8691B60249E6afbD307aBE7758adb',
@@ -106,13 +110,13 @@ export class AggregatorContorller {
       order,
     } = query;
     const { startBlockNum, endBlockNum, startTime, endTime } =
-      await this.validateRangeParams(startBlock, endBlock, startDate, endDate);
+      this.validateRangeParams(startBlock, endBlock, startDate, endDate);
 
     const response: ReturnedLogType[] = await this.aggregatorService.getLogs({
-      startBlock: startBlockNum ? startBlockNum : undefined,
-      endBlock: endBlockNum ? endBlockNum : undefined,
-      startDate: startTime?.toString() || undefined,
-      endDate: endTime?.toString() || undefined,
+      startBlock: startBlockNum,
+      endBlock: endBlockNum,
+      startDate: toIso(startTime),
+      endDate: toIso(endTime),
       filter: {
         from: from?.toLowerCase(),
         to: to?.toLowerCase(),
@@ -126,6 +130,7 @@ export class AggregatorContorller {
       const logResponse = new GetLogsQueryResponseDTO();
       logResponse.transactionHash = log.transactionhash;
       logResponse.blockNumber = log.blocknumber;
+      logResponse.logIndex = log.logindex;
       logResponse.executedDate = log.executeddate;
       logResponse.uploaded = log.uploaded;
       logResponse.from = log.from;
@@ -139,15 +144,15 @@ export class AggregatorContorller {
   @ApiOperation({
     summary: 'Get Total',
     description:
-      'Get total transactions and values for all indexed period. Also possible to select specific period by date in timesamp or block number',
+      'Get total transactions and values for all indexed period. Also possible to select specific period by date in timestamp or block number',
   })
   @ApiResponse({
     status: 200,
     description: 'Object with total values for selected or all period',
     type: TotalResponseDTO,
     example: {
-      firstTransaction: '1970-01-01T00:00:00.000Z',
-      lastTransaction: '2022-09-22T21:20:34.000Z',
+      firstTransaction: '2021-09-30T09:15:42.000Z',
+      lastTransaction: '2025-02-20T18:19:59.000Z',
       firstBlock: 7390439,
       lastBlock: 21048005,
       totalTransactionsCount: '5476041',
@@ -160,14 +165,14 @@ export class AggregatorContorller {
   async getTotal(@Query() query: TotalRequestDTO): Promise<TotalResponseDTO> {
     const { startBlock, endBlock, startDate, endDate } = query;
     const { startBlockNum, endBlockNum, startTime, endTime } =
-      await this.validateRangeParams(startBlock, endBlock, startDate, endDate);
+      this.validateRangeParams(startBlock, endBlock, startDate, endDate);
 
     const response: TotalParamsResponseType | undefined =
       await this.aggregatorService.getTotal({
         startBlock: startBlockNum,
         endBlock: endBlockNum,
-        startDate: startTime?.toString(),
-        endDate: endTime?.toString(),
+        startDate: toIso(startTime),
+        endDate: toIso(endTime),
       });
     if (!response) {
       throw new BadRequestException(Errors.NoData);
@@ -189,7 +194,7 @@ export class AggregatorContorller {
   @ApiOperation({
     summary: 'Get Top Accounts List',
     description:
-      'Get top accounts by total value of transactions. Also possible to select specific period by date in timesamp or block number',
+      'Get top accounts by total value of transactions. Also possible to select specific period by date in timestamp or block number',
   })
   @ApiQuery({ type: TopAccountsRequestDTO })
   @ApiResponse({
@@ -230,18 +235,18 @@ export class AggregatorContorller {
       orderBy,
     } = query;
     const { startBlockNum, endBlockNum, startTime, endTime } =
-      await this.validateRangeParams(startBlock, endBlock, startDate, endDate);
+      this.validateRangeParams(startBlock, endBlock, startDate, endDate);
     const response: TopAccountsResponseType[] | undefined =
       await this.aggregatorService.getTopAccounts({
-        startBlock: startBlockNum ? startBlockNum : undefined,
-        endBlock: endBlockNum ? endBlockNum : undefined,
-        startDate: startTime?.toString() || undefined,
-        endDate: endTime?.toString() || undefined,
+        startBlock: startBlockNum,
+        endBlock: endBlockNum,
+        startDate: toIso(startTime),
+        endDate: toIso(endTime),
         filter: {
           limit,
           offset,
-          order: OrderDirectionEnum[order],
-          orderBy: OrderByEnum[orderBy],
+          order,
+          orderBy,
         },
       });
     if (!response || response.length === 0) {

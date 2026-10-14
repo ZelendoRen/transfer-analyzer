@@ -2,6 +2,8 @@ import {
   BadRequestException,
   Controller,
   Get,
+  HttpException,
+  InternalServerErrorException,
   Logger,
   Query,
   UsePipes,
@@ -10,7 +12,7 @@ import {
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { GetLogsQueryResponseDTO, GetLogsRequestDTO } from './dto/getLogs.dto';
-import { FormatedLogType } from '../types/types';
+import { FormattedLogType } from '../types/types';
 import { AnalyzerService } from './analyzer.service';
 import { Errors } from '../enum/errors.enum';
 
@@ -20,15 +22,15 @@ export class AnalyzerController {
   private readonly logger = new Logger(AnalyzerController.name);
   constructor(private readonly analyzerService: AnalyzerService) {}
 
-  async validateRangeParams(
+  validateRangeParams(
     startBlock: string | number | undefined,
     endBlock: string | number | undefined,
-  ): Promise<{ startBlockNum: number; endBlockNum: number }> {
+  ): { startBlockNum: number; endBlockNum: number } {
     const hasBlockRange = startBlock !== undefined && endBlock !== undefined;
 
     if (!hasBlockRange) {
       throw new BadRequestException(
-        'You cannot specify both block range and date range.',
+        'Both startBlock and endBlock are required.',
       );
     }
 
@@ -51,7 +53,7 @@ export class AnalyzerController {
   @ApiOperation({
     summary: 'Get logs',
     description:
-      'Directly from blockchain. This endpoint able to get max 1000 logs',
+      'Directly from the blockchain, bypassing the database. The block range is limited by the RPC node',
   })
   @ApiResponse({
     status: 200,
@@ -93,11 +95,11 @@ export class AnalyzerController {
   ): Promise<GetLogsQueryResponseDTO[]> {
     try {
       const { startBlock, endBlock, topicName, from, to } = query;
-      const { startBlockNum, endBlockNum } = await this.validateRangeParams(
+      const { startBlockNum, endBlockNum } = this.validateRangeParams(
         startBlock,
         endBlock,
       );
-      const logs: FormatedLogType[] = await this.analyzerService.getLogs({
+      const logs: FormattedLogType[] = await this.analyzerService.getLogs({
         startBlock: startBlockNum.toString(),
         endBlock: endBlockNum?.toString(),
         topicName: topicName,
@@ -117,8 +119,11 @@ export class AnalyzerController {
         return responseLog;
       });
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       this.logger.error(error);
-      throw Errors.GetLogs;
+      throw new InternalServerErrorException(Errors.GetLogs);
     }
   }
 }

@@ -10,6 +10,8 @@ import { TopicNames } from '../../enum/blockchain.enum';
 
 import { Transform } from 'class-transformer';
 
+import { toInt } from '../../common/transforms';
+
 export class GetLogsRequestDTO {
   @ApiProperty({
     description: 'Block number from which the logs are starting',
@@ -17,22 +19,22 @@ export class GetLogsRequestDTO {
     required: true,
   })
   @IsNotEmpty()
-  @Transform(({ value }) => parseInt(value))
+  @Transform(toInt())
   @IsNumber()
   startBlock: number;
 
   @ApiProperty({
     description: 'Block number from which the logs are ending',
     type: 'number',
-    required: false,
+    required: true,
   })
-  @IsOptional()
-  @Transform(({ value }) => parseInt(value))
+  @IsNotEmpty()
+  @Transform(toInt())
   @IsNumber()
-  endBlock: number | undefined;
+  endBlock: number;
 
   @ApiProperty({
-    description: 'Start date of the logs. Used timestamp in milliseconds',
+    description: 'Address of the sender, that will be used as a filter',
     type: 'string',
     required: false,
   })
@@ -42,7 +44,7 @@ export class GetLogsRequestDTO {
   from: string;
 
   @ApiProperty({
-    description: 'End date of the logs. Used timestamp in milliseconds',
+    description: 'Address of the receiver, that will be used as a filter',
     type: 'string',
     required: false,
   })

@@ -17,8 +17,13 @@ export class TransactionsEntity {
   @PrimaryColumn({ type: 'integer' })
   logIndex: number;
 
+  @Index()
   @Column({ type: 'bigint', nullable: true })
   blockNumber: number;
+
+  // Used to detect reorgs. Null for rows indexed before this column existed.
+  @Column({ type: 'varchar', length: 66, nullable: true })
+  blockHash: string;
 
   @Index()
   @Column({ type: 'varchar', length: 42 })

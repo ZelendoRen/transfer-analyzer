@@ -1,5 +1,6 @@
 import {
   IsDateString,
+  IsEnum,
   IsEthereumAddress,
   IsNumber,
   IsOptional,
@@ -8,6 +9,8 @@ import {
   Min,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
+
+import { toInt, toIsoDate, toUpperCase } from '../../common/transforms';
 import { ApiProperty } from '@nestjs/swagger';
 
 import { OrderDirectionEnum } from '../../enum/database.enum';
@@ -19,7 +22,7 @@ export class GetLogsRequestDTO {
     required: false,
   })
   @IsOptional()
-  @Transform(({ value }) => parseInt(value))
+  @Transform(toInt())
   @IsNumber()
   startBlock: number | undefined;
 
@@ -29,7 +32,7 @@ export class GetLogsRequestDTO {
     required: false,
   })
   @IsOptional()
-  @Transform(({ value }) => parseInt(value))
+  @Transform(toInt())
   @IsNumber()
   endBlock: number | undefined;
 
@@ -39,9 +42,7 @@ export class GetLogsRequestDTO {
     required: false,
   })
   @IsOptional()
-  @Transform(({ value }) =>
-    !isNaN(value) ? new Date(Number(value)).toISOString() : undefined,
-  )
+  @Transform(toIsoDate)
   @IsDateString()
   startDate: string | undefined;
 
@@ -51,7 +52,7 @@ export class GetLogsRequestDTO {
     required: false,
   })
   @IsOptional()
-  @Transform(({ value }) => new Date(Number(value)).toISOString() || undefined)
+  @Transform(toIsoDate)
   @IsDateString()
   endDate: string | undefined;
 
@@ -83,7 +84,7 @@ export class GetLogsRequestDTO {
     minimum: 0,
   })
   @IsOptional()
-  @Transform(({ value }) => parseInt(value || '23'))
+  @Transform(toInt('23'))
   @IsNumber()
   @Max(10000, { message: 'Max value is 10000' })
   @Min(0, { message: 'Min value is 0' })
@@ -96,7 +97,7 @@ export class GetLogsRequestDTO {
     minimum: 0,
   })
   @IsOptional()
-  @Transform(({ value }) => parseInt(value || '0'))
+  @Transform(toInt('0'))
   @IsNumber()
   @Min(0, { message: 'Min value is 0' })
   offset: number = 0;
@@ -109,8 +110,8 @@ export class GetLogsRequestDTO {
     default: OrderDirectionEnum.DESC,
   })
   @IsOptional()
-  @Transform(({ value }) => value.toUpperCase())
-  @IsString()
+  @Transform(toUpperCase)
+  @IsEnum(OrderDirectionEnum)
   order: OrderDirectionEnum = OrderDirectionEnum.DESC;
 }
 

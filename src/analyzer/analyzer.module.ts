@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AnalyzerController } from './analyzer.controller';
 import { AnalyzerService } from './analyzer.service';
-import { BlockchainModule } from 'src/blockchain/blockcahin.module';
+import { BlockchainModule } from '../blockchain/blockchain.module';
 
 @Module({
   imports: [BlockchainModule],

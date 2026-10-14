@@ -10,7 +10,7 @@ import { BlocksEntity } from './entity/blocks.entity';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: async (configService: ConfigService) => ({
+      useFactory: (configService: ConfigService) => ({
         type: 'postgres',
         host: configService.get<string>('DB_HOST'),
         port: configService.get<number>('DB_PORT'),
@@ -18,7 +18,7 @@ import { BlocksEntity } from './entity/blocks.entity';
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
         entities: [TransactionsEntity, BlocksEntity],
-        synchronize: true,
+        synchronize: configService.get<string>('DB_SYNCHRONIZE') !== 'false',
       }),
     }),
   ],

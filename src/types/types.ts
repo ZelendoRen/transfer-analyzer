@@ -10,10 +10,17 @@ export type GetBlockParamsType = {
     to?: string;
   };
 };
-export type FormatedLogType = {
+export type TransferArgs = {
+  from: string;
+  to: string;
+  value: bigint;
+};
+
+export type FormattedLogType = {
   transactionHash: string;
   uploaded?: string;
   blockNumber: number;
+  blockHash: string;
   logIndex: number;
   from: string;
   to: string;
@@ -53,10 +60,10 @@ export type BlocksInsertParamsType = {
 export type TotalParamsResponseType = {
   firsttransactiondate: string;
   lasttransactiondate: string;
-  totaltransactions: number;
-  totalvalue: number;
-  mintransactionvalue: number;
-  maxtransactionvalue: number;
+  totaltransactions: string;
+  totalvalue: string;
+  mintransactionvalue: string;
+  maxtransactionvalue: string;
   firstblocknumber: number;
   lastblocknumber: number;
 };

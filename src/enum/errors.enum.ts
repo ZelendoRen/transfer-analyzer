@@ -9,7 +9,7 @@ export enum Errors {
   App = 'App processing error',
   TimestampCron = 'Timestamp cron processing error',
   RPCErrors = 'Error while processing RPC request',
-  FormatinLogError = 'Error while formatting log',
+  FormattingLogError = 'Error while formatting log',
   NoData = 'No data found',
   GetLogs = 'Error while getting logs from blockchain',
 }

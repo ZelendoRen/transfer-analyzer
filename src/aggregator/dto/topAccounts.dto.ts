@@ -1,9 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
+
+import { toInt, toIsoDate, toUpperCase } from '../../common/transforms';
 import {
   IsDateString,
+  IsEnum,
   IsEthereumAddress,
-  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
@@ -19,7 +21,7 @@ export class TopAccountsRequestDTO {
     required: false,
   })
   @IsOptional()
-  @Transform(({ value }) => parseInt(value))
+  @Transform(toInt())
   @IsNumber()
   startBlock: number | undefined;
 
@@ -29,7 +31,7 @@ export class TopAccountsRequestDTO {
     required: false,
   })
   @IsOptional()
-  @Transform(({ value }) => parseInt(value))
+  @Transform(toInt())
   @IsNumber()
   endBlock: number | undefined;
 
@@ -39,9 +41,7 @@ export class TopAccountsRequestDTO {
     required: false,
   })
   @IsOptional()
-  @Transform(({ value }) =>
-    !isNaN(value) ? new Date(Number(value)).toISOString() : undefined,
-  )
+  @Transform(toIsoDate)
   @IsDateString()
   startDate: string | undefined;
 
@@ -51,7 +51,7 @@ export class TopAccountsRequestDTO {
     required: false,
   })
   @IsOptional()
-  @Transform(({ value }) => new Date(Number(value)).toISOString() || undefined)
+  @Transform(toIsoDate)
   @IsDateString()
   endDate: string | undefined;
 
@@ -63,7 +63,7 @@ export class TopAccountsRequestDTO {
     minimum: 0,
   })
   @IsOptional()
-  @Transform(({ value }) => parseInt(value || '10'))
+  @Transform(toInt('10'))
   @IsNumber()
   @Max(10000, { message: 'Max value is 10000' })
   @Min(0, { message: 'Min value is 0' })
@@ -76,7 +76,7 @@ export class TopAccountsRequestDTO {
     minimum: 0,
   })
   @IsOptional()
-  @Transform(({ value }) => parseInt(value || '0'))
+  @Transform(toInt('0'))
   @IsNumber()
   @Min(0, { message: 'Min value is 0' })
   offset: number = 0;
@@ -89,7 +89,8 @@ export class TopAccountsRequestDTO {
     required: false,
   })
   @IsOptional()
-  @IsString()
+  @Transform(toUpperCase)
+  @IsEnum(OrderDirectionEnum)
   order: OrderDirectionEnum = OrderDirectionEnum.DESC;
 
   @ApiProperty({
@@ -100,8 +101,7 @@ export class TopAccountsRequestDTO {
     required: false,
   })
   @IsOptional()
-  @IsString()
-  @IsNotEmpty()
+  @IsEnum(OrderByEnum)
   orderBy: OrderByEnum = OrderByEnum.value;
 }
 
@@ -125,6 +125,6 @@ export class TopAccountsResponseDTO {
     type: 'number',
   })
   @IsNumber()
-  @Transform(({ value }) => parseInt(value))
+  @Transform(toInt())
   totalTransactions: number;
 }
