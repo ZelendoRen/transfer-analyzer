@@ -12,9 +12,10 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1');
 
   const config = new DocumentBuilder()
-    .setTitle(' API')
-    .setDescription('The API description')
-    .addBearerAuth()
+    .setTitle('Transfer Analyzer API')
+    .setDescription(
+      'ERC-20 Transfer indexer: transfers, totals and top accounts for the indexed contract',
+    )
     .addServer('api/v1')
     .setVersion('1.0')
     .build();
@@ -29,4 +30,4 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe());
   await app.listen(process.env.PORT ?? 3000);
 }
-bootstrap();
+void bootstrap();

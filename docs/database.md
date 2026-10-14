@@ -1,66 +1,50 @@
-# Database Module
+# Database
 
-This module configures and exports the TypeORM module for database interaction. It establishes a connection to a PostgreSQL database using configuration values and defines the entities used in the application.
+`DatabaseModule` configures the TypeORM connection to PostgreSQL and registers the entities. It is `@Global()` and exports `TypeOrmModule`, so repositories can be injected anywhere without importing it again.
 
-## Features
+## Connection
 
-- **Database Connection:** Establishes a connection to a PostgreSQL database.
-- **Entity Definition:** Defines the database entities (`TransactionsEntity` and `BlocksEntity`).
-- **Dependency Injection:** Uses `ConfigService` to inject database configuration.
-- **Global Scope:** Makes the TypeORM module globally available.
+Configured with `TypeOrmModule.forRootAsync` from environment variables:
 
-## Module Configuration
+| Variable                                                  | Description                                                                                                   |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Connection settings.                                                                                          |
+| `DB_SYNCHRONIZE`                                          | `true` (default) lets TypeORM create and alter tables on start; set to `false` to manage the schema yourself. |
 
-The `DatabaseModule` uses `TypeOrmModule.forRootAsync` to configure the database connection asynchronously. This allows for dependency injection of the `ConfigService`.
-
-- **Imports:** Imports the `ConfigModule` to access configuration values.
-- **Inject:** Injects the `ConfigService` into the `useFactory` function.
-- **useFactory:** A factory function that returns the TypeORM configuration object.
-
-## Database Configuration
-
-The database connection is configured using the following environment variables:
-
-- `DB_HOST`: The database host.
-- `DB_PORT`: The database port.
-- `DB_USER`: The database username.
-- `DB_PASSWORD`: The database password.
-- `DB_NAME`: The database name.
+`synchronize` is convenient for development and a first deployment. For anything that has to evolve safely, switch to migrations.
 
 ## Entities
 
-The module defines two entities:
+### `BlocksEntity` (`blocks_entity`)
 
-### `BlocksEntity`
+One row per block that contains at least one indexed transfer.
 
-Represents a block in the blockchain.
+| Column         | Type        | Description                                              |
+| -------------- | ----------- | -------------------------------------------------------- |
+| `blockNumber`  | `bigint`    | Primary key.                                             |
+| `uploaded`     | `timestamp` | When the row was created.                                |
+| `executedDate` | `timestamp` | Block time. `NULL` until the background job fills it in. |
+| `transactions` | relation    | One-to-many to `TransactionsEntity`.                     |
 
-| Column         | Type        | Description                                           |
-| -------------- | ----------- | ----------------------------------------------------- |
-| `blockNumber`  | `bigint`    | The block number (primary key).                       |
-| `uploaded`     | `timestamp` | The timestamp when the block data was uploaded.       |
-| `executedDate` | `timestamp` | The timestamp when the block was executed.            |
-| `transactions` | `OneToMany` | A one-to-many relationship with `TransactionsEntity`. |
+### `TransactionsEntity` (`transactions_entity`)
 
-### `TransactionsEntity`
+One row per `Transfer` event.
 
-Represents a transaction log.
+| Column            | Type          | Description                                                                          |
+| ----------------- | ------------- | ------------------------------------------------------------------------------------ |
+| `transactionHash` | `varchar(66)` | Primary key, part 1.                                                                 |
+| `logIndex`        | `integer`     | Primary key, part 2. Position of the log in the block.                               |
+| `blockNumber`     | `bigint`      | Block of the transfer, foreign key to `blocks_entity`. Indexed.                      |
+| `blockHash`       | `varchar(66)` | Hash of the block when it was indexed; used to detect reorgs. `NULL` for older rows. |
+| `from`            | `varchar(42)` | Sender. Indexed.                                                                     |
+| `to`              | `varchar(42)` | Receiver. Indexed.                                                                   |
+| `value`           | `numeric`     | Amount in the token's base units. Indexed.                                           |
+| `uploaded`        | `timestamp`   | When the row was created.                                                            |
+| `blocks`          | relation      | Many-to-one to `BlocksEntity`.                                                       |
 
-| Column            | Type          | Description                                           |
-| ----------------- | ------------- | ----------------------------------------------------- |
-| `transactionHash` | `varchar(66)` | The transaction hash (primary key).                   |
-| `logIndex`        | `integer`     | The log index within the transaction (primary key).   |
-| `blockNumber`     | `bigint`      | The block number associated with the transaction.     |
-| `from`            | `varchar(42)` | The "from" address of the transaction (indexed).      |
-| `to`              | `varchar(42)` | The "to" address of the transaction (indexed).        |
-| `value`           | `numeric(66)` | The value transferred in the transaction (indexed).   |
-| `uploaded`        | `timestamp`   | The timestamp when the transaction data was uploaded. |
-| `blocks`          | `ManyToOne`   | A many-to-one relationship with `BlocksEntity`.       |
+The primary key `(transactionHash, logIndex)` makes inserts idempotent: re-reading a block range never creates duplicates.
 
-## Exports
+## Notes
 
-The module exports the `TypeOrmModule`, making the TypeORM repositories and connection available to other modules.
-
-## Global Scope
-
-The `@Global()` decorator makes this module globally available, so it doesn't need to be imported in other modules that use TypeORM. This is generally acceptable for a core module like the database module. However, be mindful of the potential for tight coupling when using global modules extensively.
+- `bigint` and `numeric` columns come back from PostgreSQL as strings; the services convert block numbers to numbers where needed. Amounts stay strings, as they can exceed `Number.MAX_SAFE_INTEGER`.
+- Rows are deleted only by the reorg rollback, transfers first and blocks second.

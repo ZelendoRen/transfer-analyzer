@@ -1,9 +1,27 @@
 {
   "name": "transfer-analyzer",
   "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "description": "ERC-20 Transfer event indexer for EVM chains: reorg-safe sync into PostgreSQL with a REST API for logs, totals and top accounts.",
+  "author": "ZelendoRen",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ZelendoRen/transfer-analyzer.git"
+  },
+  "keywords": [
+    "erc20",
+    "indexer",
+    "ethereum",
+    "avalanche",
+    "blockchain",
+    "nestjs",
+    "typeorm",
+    "postgresql",
+    "ethers"
+  ],
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "license": "MIT",
   "scripts": {
     "build": "nest build",
@@ -16,8 +34,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
-    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

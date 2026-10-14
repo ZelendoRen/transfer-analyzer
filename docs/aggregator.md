@@ -1,111 +1,84 @@
-# Aggregator Service
+# Aggregator
 
-This service aggregates blockchain data, including timestamps and transaction logs, using cron jobs for periodic collection and processing.
+The aggregator keeps the database in sync with the chain and exposes the stored data. It consists of `AggregatorService` (two cron jobs plus read methods), `AggregatorController` (REST endpoints, see [api.md](api.md)) and the request/response DTOs.
 
-## Features
+## Cron jobs
 
-- **Timestamp Collection:** Collects timestamps for blocks lacking them.
-- **Transaction Data Collection:** Collects and processes transaction logs from the blockchain.
-- **Batch Processing:** Processes logs in batches for efficiency.
-- **Robust Error Handling:** Implements comprehensive error handling and logging.
-- **Scheduled Data Collection:** Employs cron jobs for scheduled data acquisition.
+| Method              | Schedule                    | Purpose                                               |
+| ------------------- | --------------------------- | ----------------------------------------------------- |
+| `collectData`       | every 5 s (`*/5 * * * * *`) | Reads new transfers from the chain into the database. |
+| `collectTimestamps` | every 1 s (`*/1 * * * * *`) | Fills in the execution date of stored blocks.         |
 
-### Cron Schedules
+Each job has an in-memory lock, so a slow iteration is never overlapped by the next tick. The lock is always released, even when the iteration fails.
 
-- `collectTimestamps`: Executes every second (`*/1 * * * * *`).
-- `collectData`: Executes every 5 seconds (`*/5 * * * * *`).
+## `collectData()`
 
-### Methods
+Position is kept in `nextBlock` – the next block that has to be requested. On the first run it is read from the database (`getHighestProcessedBlock`: the highest stored block, but at least `START_BLOCK`); afterwards it lives in memory.
 
-#### `collectTimestamps()`
+One iteration:
 
-Collects timestamps for blocks without them. This task addresses the requirement to return the transaction's execution date. As the Get Logs RPC response lacks this information, an additional request to retrieve block data is necessary. To mitigate query spam, this cron job was implemented. The `Blocks` database table stores the block number (PK) and execution date. Because all transactions minted within the same block share the same minted timestamp, each stored transaction corresponds to a row in the `Blocks` table. This cron job retrieves new blocks without an execution date every second, requests the timestamp, and updates the database. Further details on the logic are provided below.
+1. Read the chain head.
+2. `handleReorg(head)` – detect and undo a reorg (see below).
+3. Compute `safeHead = head - CONFIRMATIONS`. If `nextBlock > safeHead` there is nothing confirmed to index yet, and the iteration ends.
+4. `getLogsData(BATCH_SIZE, safeHead)` – request `Transfer` logs for `[nextBlock, min(nextBlock + BATCH_SIZE - 1, safeHead)]`.
+5. Insert the touched blocks (without a date) and the transfers. Both inserts use `ON CONFLICT DO NOTHING`, so re-reading a range is harmless.
+6. Move `nextBlock` to `endBlock + 1`. If anything above throws, the position is **not** moved and the same range is retried on the next tick.
 
-- **Logic:**
-  1. Checks if the service is already processing timestamps.
-  2. Retrieves a block number without a timestamp.
-  3. Fetches the block's minted timestamp from the blockchain.
-  4. Persists the execution date for the block in the database.
-- **Cron:** `*/1 * * * * *`
-- **Throws:** (Document any specific exceptions thrown)
+## `handleReorg(head)`
 
-#### `collectData()`
+See the README section on [confirmations and reorg handling](../README.md#confirmations-and-reorg-handling) for the idea. Mechanics:
 
-Collects, processes, and persists transaction logs to the database.
+1. Load up to 100 of the newest stored blocks with the hash saved at indexing time (`getLatestIndexedBlocks`).
+2. If the newest one is further than `REORG_WINDOW` blocks behind the head, it is treated as final and nothing is checked (no RPC calls while catching up on history).
+3. Compare stored and canonical hash (`getBlockHash`), newest first, until one matches. Every block that did not match is stale; the oldest of them is the fork block.
+4. Delete transfers, then blocks, from the fork block upwards (transfers first because of the foreign key) and set `nextBlock` to the fork block.
 
-- **Logic:**
-  1. Checks if the service is already processing transactions.
-  2. Retrieves the highest processed block number.
-  3. Retrieves transaction logs in batches.
-  4. Adds blocks to the database.
-  5. Persists transaction data to the database.
-- **Cron:** `*/5 * * * * *`
-- **Throws:** (Document any specific exceptions thrown)
+A block the node does not know (`undefined` hash) counts as reorged.
 
-#### `getLogsData(iterationBatchSize)`
+## `getLogsData(iterationBatchSize, safeHead?)`
 
-Retrieves transaction logs from the blockchain.
+Requests and formats the logs of one range and returns `{ logs, endBlock }`. If `safeHead` is omitted it is computed from the current head and `CONFIRMATIONS`.
 
-- **Parameters:**
-  - `iterationBatchSize`: The batch size for log retrieval.
-- **Returns:** An object containing the formatted logs and the end block number.
-- **Logic:**
-  1. Retrieves the current block number from the blockchain.
-  2. Calculates the end block number based on the batch size.
-  3. Retrieves logs from the blockchain using `blockchainService.getLogs()`.
-  4. Formats the logs using `formatLogs()`.
-  5. Implements retry logic with exponential backoff for specific RPC errors (`-32000`).
-- **Throws:** `Errors.GetLogs`
+When the node rejects the range as too large (RPC error codes `-32000`, `-32005`, `-32602`), the method waits 10 seconds and retries with half the batch size, down to a single block. Any other error – or a rejected single block – is thrown as `Errors.GetLogs`.
 
-#### `formatLogs(logs)`
+## `formatLogs(logs)`
 
-Formats raw transaction logs.
+Decodes raw logs with the contract ABI into `FormattedLogType` (`blockNumber`, `blockHash`, `logIndex`, `transactionHash`, `from`, `to`, `value`). The block hash is what makes reorg detection possible. A log that cannot be decoded as a `Transfer` is an error (`Errors.FormattingLogError`) rather than being stored with empty fields.
 
-- **Parameters:**
-  - `logs`: An array of raw transaction logs.
-- **Returns:** An array of formatted transaction logs.
-- **Logic:**
-  1. Parses each log using `blockchainService.parseLog()`.
-  2. Creates a `FormatedLogType` object for each log.
-- **Throws:** `Errors.FormatinLogError`
+## `collectTimestamps()`
 
-#### `getLogs(args)`
+`eth_getLogs` does not return the time of a block, and asking for it per transfer would multiply the RPC load. All transfers of a block share one timestamp, so it is stored once, in the `blocks_entity` table:
 
-Retrieves logs from the database.
+1. Take one block that has no `executedDate`.
+2. Fetch the block and read its timestamp.
+3. Store the date.
 
-- **Parameters:**
-  - `args`: (Describe the structure of `RequestLogType`)
-- **Returns:** An array of `ReturnedLogType` objects.
+One block per second keeps the request rate low and works within public RPC limits. Errors are logged and the block is retried on the next tick.
 
-#### `getTotal(args)`
+## Read methods
 
-Retrieves the total transaction count from the database.
+`getLogs(args)`, `getTotal(args)` and `getTopAccounts(args)` delegate to `TransactionsService` and map any storage failure to `Errors.DataBase`. `args` is a `RequestLogType`:
 
-- **Parameters:**
-  - `args`: (Describe the structure of `RequestLogType`)
-- **Returns:** A `TotalParamsResponseType` object or `undefined`.
-- **Throws:** `Errors.DataBase`
-
-#### `getTopAccounts(args)`
-
-Retrieves the top accounts from the database.
-
-- **Parameters:**
-  - `args`: (Describe the structure of `RequestLogType`)
-- **Returns:** An array of `TopAccountsResponseType` objects or `undefined`.
-- **Throws:** `Errors.DataBase`
-
-## Error Handling
-
-The service employs custom error enums (`Errors`) for comprehensive error management. Specific errors are caught, logged, and appropriate exceptions are thrown.
+| Field                           | Type            | Description                                         |
+| ------------------------------- | --------------- | --------------------------------------------------- |
+| `startBlock`, `endBlock`        | number          | Inclusive block range.                              |
+| `startDate`, `endDate`          | string          | Inclusive range of block execution dates, ISO 8601. |
+| `filter.from`, `filter.to`      | string          | Address filters (case-insensitive).                 |
+| `filter.limit`, `filter.offset` | number          | Paging.                                             |
+| `filter.order`                  | `ASC` \| `DESC` | Sort direction.                                     |
+| `filter.orderBy`                | `totalValue`    | Sort column for `getTopAccounts`.                   |
 
 ## Configuration
 
-The service utilizes `ConfigService` to retrieve configuration parameters, including `BATCH_SIZE`.
+| Variable        | Default | Used for                                                    |
+| --------------- | ------- | ----------------------------------------------------------- |
+| `BATCH_SIZE`    | 2000    | Max blocks per `eth_getLogs` request.                       |
+| `CONFIRMATIONS` | 12      | Confirmation depth before a block is indexed.               |
+| `REORG_WINDOW`  | 256     | Distance from the head within which blocks are re-verified. |
 
 ## Dependencies
 
-- `blocksService`: (Describe the role of `BlocksService`)
-- `transactionsService`: (Describe the role of `TransactionsService`)
-- `blockchainService`: (Describe the role of `BlockchainService`)
-- `configService`: (Describe the role of `ConfigService`)
+- `BlockchainService` – RPC access (logs, head, block hash and timestamp).
+- `TransactionsService` – persistence of transfers, reorg lookups and queries.
+- `BlocksService` – persistence of blocks and their timestamps.
+- `ConfigService` – the settings above.

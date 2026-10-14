@@ -1,92 +1,49 @@
-# Blockchain Service
+# Blockchain
 
-This service provides an abstraction layer for interacting with the blockchain. It uses Ethers.js to connect to an RPC provider, interact with a smart contract, and retrieve blockchain data. It is used by other services to fetch data from the blockchain.
+`BlockchainService` is the only place that talks to the node. It wraps an ethers.js `JsonRpcProvider` and an ERC-20 `Contract` built from the ABI in `src/blockchain/abi/ERC20.abi.json`. The module is `@Global()`, so any module can inject the service.
 
-## Features
+## Construction
 
-- **RPC Connection:** Establishes a connection to a JSON-RPC provider.
-- **Smart Contract Interaction:** Provides methods for interacting with a specific smart contract (ERC20).
-- **Block Data Retrieval:** Retrieves information about blocks, including the current block number and block timestamp.
-- **Log Retrieval:** Fetches transaction logs from the blockchain, filtered by address and topic.
-- **Log Parsing:** Parses raw transaction logs using the contract ABI.
-- **Topic Generation:** Generates topic hashes for filtering logs.
-- **Error Handling:** Implements error handling for blockchain interactions.
-
-## Constructor
-
-The constructor initializes the service by:
-
-1. Creating a connection to the JSON-RPC provider using the `RPC_URL` from the configuration.
-2. Retrieving the contract address (`CONTRACT_ADDRESS`) from the configuration.
-3. Creating an Ethers.js contract instance using the contract address, ABI, and provider.
+The constructor reads `RPC_URL` and `CONTRACT_ADDRESS` from `ConfigService` and fails fast with a clear message if either is missing or if the address is malformed.
 
 ## Methods
 
-#### `getCurrentBlockNumber()`
+### `getCurrentBlockNumber(): Promise<number>`
 
-Retrieves the current block number from the blockchain.
+The chain head. Throws `Errors.BlockChain` on RPC failure.
 
-- **Returns:** A `Promise` that resolves to the current block number (a `number`).
-- **Throws:** `Errors.BlockChain` if an error occurs during the RPC call.
+### `getBlockHash(blockNumber): Promise<string | undefined>`
 
-#### `parseLog(log)`
+The hash of the block as the node sees it **now**. Compared with the hash stored at indexing time to detect reorgs. Returns `undefined` if the node does not know the block, and throws `Errors.BlockChain` on RPC failure.
 
-Parses a raw transaction log using the contract ABI.
+### `getBlockMintedTimestamp(blockNumber): Promise<number>`
 
-- **Parameters:**
-  - `log`: An `ethers.Log` object representing the raw transaction log.
-- **Returns:** A `Promise` that resolves to an `ethers.Result` object containing the parsed log arguments, or `undefined` if parsing fails.
-- **Throws:** `Errors.BlockChain` if an error occurs during parsing.
+The block timestamp in seconds. Throws `Errors.BlockChain` if the block does not exist or the RPC call fails.
 
-#### `getLogs(args)`
+### `getLogs(args): Promise<ethers.Log[]>`
 
-Retrieves transaction logs from the blockchain, filtered by address and topic.
+Wraps `eth_getLogs` for the configured contract.
 
-- **Parameters:**
-  - `args`: An object of type `GetBlockParamsType` specifying the criteria for log retrieval. _(Describe the structure of `GetBlockParamsType` - e.g., `startBlock` (string), `endBlock` (string, optional), `topicName` (string), `address` (string, optional), `filter` (object, optional, with `from` and `to` properties))_
-- **Returns:** A `Promise` that resolves to an array of `ethers.Log` objects.
-- **Logic:**
-  1. Constructs the filter object for the `provider.getLogs` method.
-  2. Includes the contract address in the filter.
-  3. Converts `startBlock` and `endBlock` to integers. `endBlock` defaults to the current block number if not provided.
-  4. Generates the topic filter using `getTopic()`.
-  5. Calls `provider.getLogs` with the constructed filter.
-- **Throws:** `Errors.BlockChain` if an error occurs during the RPC call.
+- **Parameters:** `GetBlockParamsType` – `startBlock`, optional `endBlock` (defaults to the head), `topicName`, optional `filter.from` / `filter.to`.
+- **Errors are not wrapped.** The raw RPC error is rethrown, because the [aggregator](aggregator.md) inspects its code to decide whether to shrink the batch.
 
-#### `getBlockMintedTimestamp(blockNumber)`
+### `getTopic(topicName, filters): Array<string | null>`
 
-Retrieves the minted timestamp for a specific block.
+Builds the `topics` array for `eth_getLogs`: the event signature hash followed by the zero-padded indexed arguments.
 
-- **Parameters:**
-  - `blockNumber`: The block number for which to retrieve the timestamp.
-- **Returns:** A `Promise` that resolves to the block's timestamp (a `number`).
-- **Throws:** `Errors.BlockChain` if an error occurs during the RPC call.
+Topics are positional – slot 1 is `from`, slot 2 is `to`. A filter that is not set stays a `null` placeholder, so a `to`-only filter is encoded as `[signature, null, to]` and is not mistaken for a `from` filter. Trailing `null`s are dropped. An unknown event name throws `Errors.BlockChain`.
 
-#### `getTopic(topicName, filters)`
+### `parseLog(log): TransferArgs | undefined`
 
-Generates the topic hash for filtering logs, including any additional filters.
+Decodes a raw log into `{ from, to, value }` (`value` is a `bigint`). Returns `undefined` if the log does not belong to an event of the ABI, and throws `Errors.BlockChain` on a decoding error.
 
-- **Parameters:**
-  - `topicName`: The name of the event for which to get the topic hash.
-  - `filters`: An optional array of additional filters (e.g., `from`, `to` addresses).
-- **Returns:** A `Promise` that resolves to an array containing the topic hash and any additional filters.
-- **Logic:**
-  1. Retrieves the topic hash for the event using `this.contract.interface.getEvent(topicName)?.topicHash`.
-  2. Throws an error if the topic is not found.
-  3. Formats additional filters by zero-padding them.
-- **Throws:** `Errors.BlockChain` if an error occurs or if the topic is not found.
+## Error handling
 
-## Error Handling
-
-The service uses the `Errors` enum (specifically `Errors.BlockChain`) to handle errors encountered during blockchain interactions. Errors are logged using the NestJS `Logger`.
+Failures are logged with the NestJS `Logger` and rethrown as `Error(Errors.BlockChain)`, except for `getLogs` as described above.
 
 ## Configuration
 
-The service uses `ConfigService` to retrieve configuration values:
-
-- `RPC_URL`: The URL of the JSON-RPC provider.
-- `CONTRACT_ADDRESS`: The address of the smart contract.
-
-## Dependencies
-
-- `configService`: An instance of `ConfigService` for accessing configuration values.
+| Variable           | Description                      |
+| ------------------ | -------------------------------- |
+| `RPC_URL`          | JSON-RPC endpoint.               |
+| `CONTRACT_ADDRESS` | Address of the indexed contract. |

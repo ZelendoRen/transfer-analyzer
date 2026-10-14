@@ -1,0 +1,2 @@
+# Keep line endings identical on every platform (prettier expects LF).
+* text=auto eol=lf
