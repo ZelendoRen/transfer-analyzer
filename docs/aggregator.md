@@ -1,84 +1,57 @@
 # Aggregator
 
-The aggregator keeps the database in sync with the chain and exposes the stored data. It consists of `AggregatorService` (two cron jobs plus read methods), `AggregatorController` (REST endpoints, see [api.md](api.md)) and the request/response DTOs.
+`AggregatorService` keeps the database in sync with the chain (two cron jobs) and serves the stored data. The REST endpoints are in `AggregatorController`, see [api.md](api.md).
 
-## Cron jobs
+| Method              | Schedule | Purpose                                         |
+| ------------------- | -------- | ----------------------------------------------- |
+| `collectData`       | every 5s | Reads new transfers from the chain into the DB. |
+| `collectTimestamps` | every 1s | Fills in the date of stored blocks.             |
 
-| Method              | Schedule                    | Purpose                                               |
-| ------------------- | --------------------------- | ----------------------------------------------------- |
-| `collectData`       | every 5 s (`*/5 * * * * *`) | Reads new transfers from the chain into the database. |
-| `collectTimestamps` | every 1 s (`*/1 * * * * *`) | Fills in the execution date of stored blocks.         |
+Each job has an in-memory lock, so a slow run is not overlapped by the next tick. The lock is released even if the run fails.
 
-Each job has an in-memory lock, so a slow iteration is never overlapped by the next tick. The lock is always released, even when the iteration fails.
+## collectData()
 
-## `collectData()`
-
-Position is kept in `nextBlock` – the next block that has to be requested. On the first run it is read from the database (`getHighestProcessedBlock`: the highest stored block, but at least `START_BLOCK`); afterwards it lives in memory.
-
-One iteration:
+The position is `nextBlock`, the next block to request. At startup it comes from the database (highest stored block, but at least `START_BLOCK`), afterwards it is kept in memory.
 
 1. Read the chain head.
-2. `handleReorg(head)` – detect and undo a reorg (see below).
-3. Compute `safeHead = head - CONFIRMATIONS`. If `nextBlock > safeHead` there is nothing confirmed to index yet, and the iteration ends.
-4. `getLogsData(BATCH_SIZE, safeHead)` – request `Transfer` logs for `[nextBlock, min(nextBlock + BATCH_SIZE - 1, safeHead)]`.
-5. Insert the touched blocks (without a date) and the transfers. Both inserts use `ON CONFLICT DO NOTHING`, so re-reading a range is harmless.
-6. Move `nextBlock` to `endBlock + 1`. If anything above throws, the position is **not** moved and the same range is retried on the next tick.
+2. `handleReorg(head)`.
+3. `safeHead = head - CONFIRMATIONS`. If `nextBlock > safeHead`, nothing is confirmed yet and the run ends.
+4. `getLogsData` requests `Transfer` logs for `[nextBlock, min(nextBlock + BATCH_SIZE - 1, safeHead)]`.
+5. Insert the blocks (without a date) and the transfers, both with `ON CONFLICT DO NOTHING`, so re-reading a range is harmless.
+6. Set `nextBlock = endBlock + 1`. If any step throws, the position stays and the range is retried on the next tick.
 
-## `handleReorg(head)`
+## handleReorg(head)
 
-See the README section on [confirmations and reorg handling](../README.md#confirmations-and-reorg-handling) for the idea. Mechanics:
-
-1. Load up to 100 of the newest stored blocks with the hash saved at indexing time (`getLatestIndexedBlocks`).
-2. If the newest one is further than `REORG_WINDOW` blocks behind the head, it is treated as final and nothing is checked (no RPC calls while catching up on history).
-3. Compare stored and canonical hash (`getBlockHash`), newest first, until one matches. Every block that did not match is stale; the oldest of them is the fork block.
+1. Load up to 100 newest stored blocks with the hash saved at indexing time.
+2. If the newest one is more than `REORG_WINDOW` behind the head, treat it as final and stop (no RPC calls while catching up).
+3. Compare each stored hash with the node's, newest first, until one matches. The oldest block that did not match is the fork block. A block the node does not know counts as not matching.
 4. Delete transfers, then blocks, from the fork block upwards (transfers first because of the foreign key) and set `nextBlock` to the fork block.
 
-A block the node does not know (`undefined` hash) counts as reorged.
+## getLogsData(batchSize, safeHead?)
 
-## `getLogsData(iterationBatchSize, safeHead?)`
+Requests and decodes the logs of one range and returns `{ logs, endBlock }`. Without `safeHead` it is computed from the current head. If the node rejects the range as too large (RPC codes `-32000`, `-32005`, `-32602`), it waits 10 seconds and retries with half the batch, down to one block. Any other error, or a rejected single block, is thrown as `Errors.GetLogs`.
 
-Requests and formats the logs of one range and returns `{ logs, endBlock }`. If `safeHead` is omitted it is computed from the current head and `CONFIRMATIONS`.
+## formatLogs(logs)
 
-When the node rejects the range as too large (RPC error codes `-32000`, `-32005`, `-32602`), the method waits 10 seconds and retries with half the batch size, down to a single block. Any other error – or a rejected single block – is thrown as `Errors.GetLogs`.
+Decodes raw logs into `FormattedLogType` (`blockNumber`, `blockHash`, `logIndex`, `transactionHash`, `from`, `to`, `value`). The block hash is what the reorg check relies on. A log that is not a `Transfer` throws `Errors.FormattingLogError` instead of being stored half empty.
 
-## `formatLogs(logs)`
+## collectTimestamps()
 
-Decodes raw logs with the contract ABI into `FormattedLogType` (`blockNumber`, `blockHash`, `logIndex`, `transactionHash`, `from`, `to`, `value`). The block hash is what makes reorg detection possible. A log that cannot be decoded as a `Transfer` is an error (`Errors.FormattingLogError`) rather than being stored with empty fields.
-
-## `collectTimestamps()`
-
-`eth_getLogs` does not return the time of a block, and asking for it per transfer would multiply the RPC load. All transfers of a block share one timestamp, so it is stored once, in the `blocks_entity` table:
-
-1. Take one block that has no `executedDate`.
-2. Fetch the block and read its timestamp.
-3. Store the date.
-
-One block per second keeps the request rate low and works within public RPC limits. Errors are logged and the block is retried on the next tick.
+`eth_getLogs` does not return block time, and asking for it per transfer would multiply RPC calls. All transfers of a block share one timestamp, so it is stored once in `blocks_entity`. Each run takes one block without a date, fetches its timestamp and saves it. Errors are logged and the block is retried on the next tick.
 
 ## Read methods
 
-`getLogs(args)`, `getTotal(args)` and `getTopAccounts(args)` delegate to `TransactionsService` and map any storage failure to `Errors.DataBase`. `args` is a `RequestLogType`:
+`getLogs`, `getTotal` and `getTopAccounts` pass a `RequestLogType` to `TransactionsService` and turn any failure into `Errors.DataBase`.
 
-| Field                           | Type            | Description                                         |
-| ------------------------------- | --------------- | --------------------------------------------------- |
-| `startBlock`, `endBlock`        | number          | Inclusive block range.                              |
-| `startDate`, `endDate`          | string          | Inclusive range of block execution dates, ISO 8601. |
-| `filter.from`, `filter.to`      | string          | Address filters (case-insensitive).                 |
-| `filter.limit`, `filter.offset` | number          | Paging.                                             |
-| `filter.order`                  | `ASC` \| `DESC` | Sort direction.                                     |
-| `filter.orderBy`                | `totalValue`    | Sort column for `getTopAccounts`.                   |
+| Field                           | Description                                         |
+| ------------------------------- | --------------------------------------------------- |
+| `startBlock`, `endBlock`        | Inclusive block range.                              |
+| `startDate`, `endDate`          | Inclusive range of block dates, ISO 8601.           |
+| `filter.from`, `filter.to`      | Address filters, case-insensitive.                  |
+| `filter.limit`, `filter.offset` | Paging.                                             |
+| `filter.order`                  | `ASC` or `DESC`.                                    |
+| `filter.orderBy`                | `totalValue`, the only column for `getTopAccounts`. |
 
 ## Configuration
 
-| Variable        | Default | Used for                                                    |
-| --------------- | ------- | ----------------------------------------------------------- |
-| `BATCH_SIZE`    | 2000    | Max blocks per `eth_getLogs` request.                       |
-| `CONFIRMATIONS` | 12      | Confirmation depth before a block is indexed.               |
-| `REORG_WINDOW`  | 256     | Distance from the head within which blocks are re-verified. |
-
-## Dependencies
-
-- `BlockchainService` – RPC access (logs, head, block hash and timestamp).
-- `TransactionsService` – persistence of transfers, reorg lookups and queries.
-- `BlocksService` – persistence of blocks and their timestamps.
-- `ConfigService` – the settings above.
+`BATCH_SIZE` (2000), `CONFIRMATIONS` (12) and `REORG_WINDOW` (256), see the README.

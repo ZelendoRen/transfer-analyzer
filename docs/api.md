@@ -10,7 +10,7 @@ Conventions:
 - Amounts are strings in the token's base units.
 - Invalid input answers `400` with the validation message.
 
-## Aggregator – indexed data
+## Aggregator - indexed data
 
 ### `GET /aggregator/logs`
 
@@ -18,10 +18,10 @@ Transfers from the database.
 
 | Parameter                | Type   | Default | Description                                   |
 | ------------------------ | ------ | ------- | --------------------------------------------- |
-| `startBlock`, `endBlock` | number | –       | Block range.                                  |
-| `startDate`, `endDate`   | number | –       | Date range, milliseconds.                     |
-| `from`, `to`             | string | –       | Sender / receiver address (case-insensitive). |
-| `limit`                  | number | 23      | 0 – 10 000.                                   |
+| `startBlock`, `endBlock` | number | -       | Block range.                                  |
+| `startDate`, `endDate`   | number | -       | Date range, milliseconds.                     |
+| `from`, `to`             | string | -       | Sender / receiver address (case-insensitive). |
+| `limit`                  | number | 23      | 0-10 000.                                     |
 | `offset`                 | number | 0       | Rows to skip.                                 |
 | `order`                  | string | `DESC`  | `ASC` or `DESC`, by block number. Any case.   |
 
@@ -29,7 +29,7 @@ Response `200`: array of
 
 ```json
 {
-  "transactionHash": "0xaefe6097…509f",
+  "transactionHash": "0xaefe6097...509f",
   "blockNumber": 20391007,
   "logIndex": 3,
   "executedDate": "2025-02-20T18:19:41.000Z",
@@ -69,9 +69,9 @@ Senders ranked by the total value they transferred.
 
 | Parameter                | Type   | Default      | Description               |
 | ------------------------ | ------ | ------------ | ------------------------- |
-| `startBlock`, `endBlock` | number | –            | Block range.              |
-| `startDate`, `endDate`   | number | –            | Date range, milliseconds. |
-| `limit`                  | number | 10           | 0 – 10 000.               |
+| `startBlock`, `endBlock` | number | -            | Block range.              |
+| `startDate`, `endDate`   | number | -            | Date range, milliseconds. |
+| `limit`                  | number | 10           | 0-10 000.                 |
 | `offset`                 | number | 0            | Rows to skip.             |
 | `order`                  | string | `DESC`       | `ASC` or `DESC`.          |
 | `orderBy`                | string | `totalValue` | Sort column.              |
@@ -86,7 +86,7 @@ Response `200`: array of
 }
 ```
 
-## Analyzer – live chain data
+## Analyzer - live chain data
 
 ### `GET /analyzer/logs`
 

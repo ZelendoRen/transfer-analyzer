@@ -15,7 +15,7 @@ Reads `Transfer` logs from the node and decodes them.
   | `topicName`                | string | Event name, `Transfer`.                     |
   | `filter.from`, `filter.to` | string | Optional sender / receiver address filters. |
 
-- **Returns:** `FormattedLogType[]` – `transactionHash`, `blockNumber`, `blockHash`, `logIndex`, `from`, `to`, `value` (a string in the token's base units).
+- **Returns:** `FormattedLogType[]` - `transactionHash`, `blockNumber`, `blockHash`, `logIndex`, `from`, `to`, `value` (a string in the token's base units).
 - **Logic:**
   1. Fetch the raw logs with `BlockchainService.getLogs`.
   2. Decode each log with `BlockchainService.parseLog`.
@@ -26,4 +26,4 @@ The size of the range is limited only by the RPC node: a node that rejects a lar
 
 ## Dependencies
 
-- `BlockchainService` – provides `getLogs` and `parseLog`.
+- `BlockchainService` - provides `getLogs` and `parseLog`.

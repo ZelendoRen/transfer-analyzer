@@ -4,12 +4,12 @@
 
 ## Modules
 
-- `ConfigModule` – loads `.env` and the process environment.
-- `ScheduleModule` – runs the aggregator's cron jobs.
-- `DatabaseModule` – PostgreSQL connection and entities ([database.md](database.md)).
-- `BlockchainModule` – RPC access ([blockchain.md](blockchain.md)).
-- `AggregatorModule` – sync loop and stored-data API ([aggregator.md](aggregator.md)).
-- `AnalyzerModule` – direct chain queries ([analyzer.md](analyzer.md)).
+- `ConfigModule` - loads `.env` and the process environment.
+- `ScheduleModule` - runs the aggregator's cron jobs.
+- `DatabaseModule` - PostgreSQL connection and entities ([database.md](database.md)).
+- `BlockchainModule` - RPC access ([blockchain.md](blockchain.md)).
+- `AggregatorModule` - sync loop and stored-data API ([aggregator.md](aggregator.md)).
+- `AnalyzerModule` - direct chain queries ([analyzer.md](analyzer.md)).
 
 `AppController` and `AppService` are empty placeholders, kept for the standard Nest layout.
 
