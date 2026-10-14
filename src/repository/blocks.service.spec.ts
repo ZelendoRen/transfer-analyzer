@@ -2,7 +2,6 @@ import { Repository } from 'typeorm';
 import { BlocksService } from './blocks.service';
 import { BlocksEntity } from '../database/entity/blocks.entity';
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigService } from '@nestjs/config';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Errors } from '../enum/errors.enum';
 
@@ -21,7 +20,6 @@ describe('BlocksService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BlocksService,
-        ConfigService,
         {
           provide: getRepositoryToken(BlocksEntity),
           useValue: {
@@ -41,7 +39,7 @@ describe('BlocksService', () => {
     expect(service).toBeDefined();
   });
 
-  it('transactionsRepository should be defined', () => {
+  it('blocksRepository should be defined', () => {
     expect(blocksRepository).toBeDefined();
   });
 
@@ -178,6 +176,44 @@ describe('BlocksService', () => {
         mockQueryBuilder,
       );
       await expect(service.getBlockWithoutDate()).rejects.toThrow(
+        Errors.DataBase,
+      );
+    });
+  });
+
+  describe('deleteFromBlock', () => {
+    it('deletes blocks from the given number upwards', async () => {
+      const mockQueryBuilder = {
+        delete: jest.fn().mockReturnThis(),
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({}),
+      };
+      (blocksRepository.createQueryBuilder as jest.Mock).mockReturnValue(
+        mockQueryBuilder,
+      );
+
+      await service.deleteFromBlock(982);
+
+      expect(mockQueryBuilder.where).toHaveBeenCalledWith(
+        'blockNumber >= :blockNumber',
+        { blockNumber: 982 },
+      );
+      expect(mockQueryBuilder.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws a database error on failure', async () => {
+      const mockQueryBuilder = {
+        delete: jest.fn().mockReturnThis(),
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockRejectedValue(new Error()),
+      };
+      (blocksRepository.createQueryBuilder as jest.Mock).mockReturnValue(
+        mockQueryBuilder,
+      );
+
+      await expect(service.deleteFromBlock(982)).rejects.toThrow(
         Errors.DataBase,
       );
     });
